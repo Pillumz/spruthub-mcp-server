@@ -12,7 +12,9 @@ export async function handleGetLogs(args, sprutClient, logger) {
     log: { list: { count } }
   });
 
-  const logs = Array.isArray(result) ? result : [];
+  // API may return { isSuccess, code, message, data: [...] } or array directly
+  const data = result.data || result;
+  const logs = Array.isArray(data) ? data : (data.logs || []);
 
   const content = [
     {

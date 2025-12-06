@@ -6,7 +6,10 @@ export async function handleListScenarios(args, sprutClient, logger) {
     scenario: { list: {} }
   });
 
-  const scenarios = (Array.isArray(result) ? result : []).map(s => ({
+  // API may return { isSuccess, code, message, data: [...] } or array directly
+  const data = result.data || result;
+  const rawScenarios = Array.isArray(data) ? data : (data.scenarios || []);
+  const scenarios = rawScenarios.map(s => ({
     id: s.id,
     name: s.name,
     enabled: s.enabled ?? true,

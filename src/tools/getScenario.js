@@ -12,18 +12,21 @@ export async function handleGetScenario(args, sprutClient, logger) {
     scenario: { get: { id } }
   });
 
-  if (!result || !result.id) {
+  // API may return { isSuccess, code, message, data: {...} } or scenario directly
+  const scenario = result.data || result;
+
+  if (!scenario || !scenario.id) {
     throw new Error(`Scenario with ID ${id} not found`);
   }
 
   const content = [
     {
       type: 'text',
-      text: `Scenario "${result.name}" (ID: ${result.id}):`
+      text: `Scenario "${scenario.name}" (ID: ${scenario.id}):`
     },
     {
       type: 'text',
-      text: JSON.stringify(result, null, 2)
+      text: JSON.stringify(scenario, null, 2)
     }
   ];
 

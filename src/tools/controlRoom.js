@@ -22,7 +22,9 @@ export async function handleControlRoom(args, sprutClient, logger) {
     expand: 'services'
   });
 
-  let accessories = searchResult.accessories || [];
+  // API returns { isSuccess, code, message, data: { accessories: [...] } }
+  const searchData = searchResult.data || searchResult;
+  let accessories = searchData.accessories || [];
 
   // Filter by service type if specified
   if (serviceType) {

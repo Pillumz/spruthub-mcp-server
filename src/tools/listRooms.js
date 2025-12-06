@@ -6,7 +6,9 @@ export async function handleListRooms(args, sprutClient, logger) {
     room: { list: {} }
   });
 
-  const rooms = Array.isArray(result) ? result : [];
+  // API may return { isSuccess, code, message, data: [...] } or array directly
+  const data = result.data || result;
+  const rooms = Array.isArray(data) ? data : (data.rooms || []);
 
   const content = [
     {

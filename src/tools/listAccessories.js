@@ -8,7 +8,10 @@ export async function handleListAccessories(args, sprutClient, logger) {
     expand: 'none'
   });
 
-  const accessories = (result.accessories || []).map(acc => ({
+  // API returns { isSuccess, code, message, data: { accessories: [...] } }
+  const data = result.data || result;
+  logger.debug(`Found ${(data.accessories || []).length} accessories`);
+  const accessories = (data.accessories || []).map(acc => ({
     id: acc.id,
     name: acc.name,
     room: acc.room?.name || null,

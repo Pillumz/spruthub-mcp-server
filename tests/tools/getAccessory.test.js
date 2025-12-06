@@ -27,7 +27,7 @@ describe('handleGetAccessory', () => {
     expect(capturedMethod).toBe('accessory.search');
     expect(capturedArgs).toEqual({
       page: 1,
-      limit: 1,
+      limit: 100,
       expand: 'characteristics'
     });
     expect(result.content[0].text).toContain('Ceiling Light');

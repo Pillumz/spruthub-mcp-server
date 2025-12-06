@@ -10,12 +10,14 @@ export async function handleGetAccessory(args, sprutClient, logger) {
 
   const result = await sprutClient.callMethod('accessory.search', {
     page: 1,
-    limit: 1,
+    limit: 100,
     expand: 'characteristics'
   });
 
+  // API returns { isSuccess, code, message, data: { accessories: [...] } }
+  const data = result.data || result;
   // Filter by ID since accessory.search may not support direct ID filter
-  const accessory = (result.accessories || []).find(a => a.id === id);
+  const accessory = (data.accessories || []).find(a => a.id === id);
 
   if (!accessory) {
     throw new Error(`Accessory with ID ${id} not found`);
