@@ -3,51 +3,83 @@ import { handleControlRoom } from '../../src/tools/controlRoom.js';
 
 describe('handleControlRoom', () => {
   test('should control all matching accessories in room', async () => {
-    const callLog = [];
+    const updateCalls = [];
     const mockClient = {
-      callMethod: async (method, params) => {
-        callLog.push({ method, params });
+      callMethod: async (method, args) => {
         if (method === 'accessory.search') {
           return {
-            accessories: [
-              { id: 1, name: 'Light 1', room: { id: 10 }, services: [{ type: 'Lightbulb' }] },
-              { id: 2, name: 'Light 2', room: { id: 10 }, services: [{ type: 'Lightbulb' }] },
-              { id: 3, name: 'Sensor', room: { id: 10 }, services: [{ type: 'MotionSensor' }] }
-            ]
+            data: {
+              accessories: [
+                {
+                  id: 10,
+                  name: 'Light 1',
+                  roomId: 1,
+                  services: [
+                    {
+                      type: 'Lightbulb',
+                      characteristics: [
+                        { aId: 10, sId: 13, cId: 15, control: { type: 'On', write: true } }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  id: 11,
+                  name: 'Light 2',
+                  roomId: 1,
+                  services: [
+                    {
+                      type: 'Lightbulb',
+                      characteristics: [
+                        { aId: 11, sId: 13, cId: 15, control: { type: 'On', write: true } }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  id: 12,
+                  name: 'Other Room Light',
+                  roomId: 2,
+                  services: [
+                    {
+                      type: 'Lightbulb',
+                      characteristics: [
+                        { aId: 12, sId: 13, cId: 15, control: { type: 'On', write: true } }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
           };
         }
-        return { success: true };
+        if (method === 'characteristic.update') {
+          updateCalls.push(args);
+          return { success: true };
+        }
       }
     };
-    const mockLogger = {
-      debug: () => {},
-      error: () => {}
-    };
+    const mockLogger = { debug: () => {} };
 
     const result = await handleControlRoom(
-      { roomId: 10, characteristic: 'On', value: false, serviceType: 'Lightbulb' },
+      { roomId: 1, characteristic: 'On', value: false },
       mockClient,
       mockLogger
     );
 
-    // Should call accessory.search first, then characteristic.update for each matching device
-    expect(callLog).toHaveLength(3);
-    expect(callLog[0].method).toBe('accessory.search');
+    // Should only update 2 accessories in room 1
+    expect(updateCalls).toHaveLength(2);
+    expect(updateCalls[0].aId).toBe(10);
+    expect(updateCalls[1].aId).toBe(11);
+    expect(updateCalls[0].control.value).toEqual({ boolValue: false });
 
     const response = JSON.parse(result.content[0].text);
     expect(response.affected).toHaveLength(2);
-    expect(response.affected[0].name).toBe('Light 1');
-    expect(response.affected[1].name).toBe('Light 2');
   });
 
   test('should throw error for missing roomId', async () => {
-    const mockClient = {
-      callMethod: async () => ({})
-    };
-    const mockLogger = {
-      debug: () => {},
-      error: () => {}
-    };
+    const mockClient = { callMethod: async () => ({}) };
+    const mockLogger = { debug: () => {} };
 
     await expect(handleControlRoom(
       { characteristic: 'On', value: false },
@@ -58,12 +90,9 @@ describe('handleControlRoom', () => {
 
   test('should handle no matching devices gracefully', async () => {
     const mockClient = {
-      callMethod: async () => ({ accessories: [] })
+      callMethod: async () => ({ data: { accessories: [] } })
     };
-    const mockLogger = {
-      debug: () => {},
-      error: () => {}
-    };
+    const mockLogger = { debug: () => {} };
 
     const result = await handleControlRoom(
       { roomId: 10, characteristic: 'On', value: false },
@@ -76,43 +105,99 @@ describe('handleControlRoom', () => {
     expect(response.affected).toHaveLength(0);
   });
 
-  test('should handle partial failures gracefully', async () => {
-    const callLog = [];
+  test('should skip accessories without matching characteristic', async () => {
     const mockClient = {
-      callMethod: async (method, params) => {
-        callLog.push({ method, params });
+      callMethod: async (method) => {
         if (method === 'accessory.search') {
           return {
-            accessories: [
-              { id: 1, name: 'Light 1', room: { id: 10 }, services: [{ type: 'Lightbulb' }] },
-              { id: 2, name: 'Light 2', room: { id: 10 }, services: [{ type: 'Lightbulb' }] }
-            ]
+            data: {
+              accessories: [
+                {
+                  id: 10,
+                  name: 'Sensor',
+                  roomId: 1,
+                  services: [
+                    {
+                      type: 'TemperatureSensor',
+                      characteristics: [
+                        { aId: 10, sId: 13, cId: 15, control: { type: 'CurrentTemperature', write: false } }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
           };
         }
-        // Fail on second update
-        if (params.id === 2) {
-          throw new Error('Device offline');
-        }
-        return { success: true };
       }
     };
-    const mockLogger = {
-      debug: () => {},
-      error: () => {}
-    };
+    const mockLogger = { debug: () => {} };
 
     const result = await handleControlRoom(
-      { roomId: 10, characteristic: 'On', value: false },
+      { roomId: 1, characteristic: 'On', value: true },
       mockClient,
       mockLogger
     );
 
     const response = JSON.parse(result.content[0].text);
-    expect(response.success).toBe(true);
-    expect(response.affected).toHaveLength(1);
-    expect(response.affected[0].id).toBe(1);
-    expect(response.failed).toHaveLength(1);
-    expect(response.failed[0].id).toBe(2);
-    expect(response.failed[0].error).toBe('Device offline');
+    expect(response.affected).toHaveLength(0);
+    expect(response.skipped).toHaveLength(1);
+  });
+
+  test('should filter by serviceType when specified', async () => {
+    const updateCalls = [];
+    const mockClient = {
+      callMethod: async (method, args) => {
+        if (method === 'accessory.search') {
+          return {
+            data: {
+              accessories: [
+                {
+                  id: 10,
+                  name: 'Light',
+                  roomId: 1,
+                  services: [
+                    {
+                      type: 'Lightbulb',
+                      characteristics: [
+                        { aId: 10, sId: 13, cId: 15, control: { type: 'On', write: true } }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  id: 11,
+                  name: 'Outlet',
+                  roomId: 1,
+                  services: [
+                    {
+                      type: 'Outlet',
+                      characteristics: [
+                        { aId: 11, sId: 13, cId: 15, control: { type: 'On', write: true } }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          };
+        }
+        if (method === 'characteristic.update') {
+          updateCalls.push(args);
+          return { success: true };
+        }
+      }
+    };
+    const mockLogger = { debug: () => {} };
+
+    await handleControlRoom(
+      { roomId: 1, characteristic: 'On', value: true, serviceType: 'Lightbulb' },
+      mockClient,
+      mockLogger
+    );
+
+    // Should only update the Lightbulb, not the Outlet
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0].aId).toBe(10);
   });
 });
