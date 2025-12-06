@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
+import 'dotenv/config';
+import http from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -12,6 +15,20 @@ import { Sprut, Schema } from 'spruthub-client';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { createRequire } from 'module';
+import {
+  handleListAccessories,
+  handleGetAccessory,
+  handleListRooms,
+  handleListScenarios,
+  handleGetScenario,
+  handleGetLogs,
+  handleControlAccessory,
+  handleControlRoom,
+  handleRunScenario
+} from './tools/index.js';
+
+const PORT = parseInt(process.env.PORT || '8000', 10);
+const HOST = process.env.HOST || '0.0.0.0';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json');
@@ -93,6 +110,131 @@ export class SpruthubMCPServer {
               required: ['methodName'],
             },
           },
+          {
+            name: 'spruthub_list_accessories',
+            description: 'List all smart home accessories with shallow data (id, name, room, online status). Use this first to discover accessory IDs before controlling devices.',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+            },
+          },
+          {
+            name: 'spruthub_get_accessory',
+            description: 'Get full details for a single accessory including all services and characteristics. Requires accessory ID from spruthub_list_accessories.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'number',
+                  description: 'Accessory ID (use spruthub_list_accessories to find IDs)',
+                },
+              },
+              required: ['id'],
+            },
+          },
+          {
+            name: 'spruthub_list_rooms',
+            description: 'List all rooms in the smart home. Use this to discover room IDs before room-wide control.',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+            },
+          },
+          {
+            name: 'spruthub_list_scenarios',
+            description: 'List all automation scenarios with shallow data (id, name, enabled). Use this to discover scenario IDs before running them.',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+            },
+          },
+          {
+            name: 'spruthub_get_scenario',
+            description: 'Get full details for a single scenario including triggers, conditions, and actions. Requires scenario ID from spruthub_list_scenarios.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'number',
+                  description: 'Scenario ID (use spruthub_list_scenarios to find IDs)',
+                },
+              },
+              required: ['id'],
+            },
+          },
+          {
+            name: 'spruthub_get_logs',
+            description: 'Get recent system logs. Default 20 entries, max 100.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                count: {
+                  type: 'number',
+                  description: 'Number of log entries to retrieve (default: 20, max: 100)',
+                },
+              },
+            },
+          },
+          {
+            name: 'spruthub_control_accessory',
+            description: 'Control a single smart home device by setting a characteristic value. Requires accessory ID from spruthub_list_accessories.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'number',
+                  description: 'Accessory ID (use spruthub_list_accessories to find IDs)',
+                },
+                characteristic: {
+                  type: 'string',
+                  description: 'Characteristic type to set (e.g., "On", "Brightness", "TargetTemperature")',
+                },
+                value: {
+                  description: 'New value for the characteristic (type depends on characteristic)',
+                },
+              },
+              required: ['id', 'characteristic', 'value'],
+            },
+          },
+          {
+            name: 'spruthub_control_room',
+            description: 'Control all devices in a room at once. Optionally filter by device type. Requires room ID from spruthub_list_rooms.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                roomId: {
+                  type: 'number',
+                  description: 'Room ID (use spruthub_list_rooms to find IDs)',
+                },
+                characteristic: {
+                  type: 'string',
+                  description: 'Characteristic type to set on all devices (e.g., "On", "Brightness")',
+                },
+                value: {
+                  description: 'New value for the characteristic',
+                },
+                serviceType: {
+                  type: 'string',
+                  description: 'Optional: filter by device type (e.g., "Lightbulb", "Switch", "Thermostat")',
+                },
+              },
+              required: ['roomId', 'characteristic', 'value'],
+            },
+          },
+          {
+            name: 'spruthub_run_scenario',
+            description: 'Execute an automation scenario. Requires scenario ID from spruthub_list_scenarios.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                id: {
+                  type: 'number',
+                  description: 'Scenario ID (use spruthub_list_scenarios to find IDs)',
+                },
+              },
+              required: ['id'],
+            },
+          },
         ],
       };
     });
@@ -110,6 +252,33 @@ export class SpruthubMCPServer {
             return await this.handleGetMethodSchema(args);
           case 'spruthub_call_method':
             return await this.handleCallMethod(args);
+          case 'spruthub_list_accessories':
+            await this.ensureConnected();
+            return await handleListAccessories(args, this.sprutClient, this.logger);
+          case 'spruthub_get_accessory':
+            await this.ensureConnected();
+            return await handleGetAccessory(args, this.sprutClient, this.logger);
+          case 'spruthub_list_rooms':
+            await this.ensureConnected();
+            return await handleListRooms(args, this.sprutClient, this.logger);
+          case 'spruthub_list_scenarios':
+            await this.ensureConnected();
+            return await handleListScenarios(args, this.sprutClient, this.logger);
+          case 'spruthub_get_scenario':
+            await this.ensureConnected();
+            return await handleGetScenario(args, this.sprutClient, this.logger);
+          case 'spruthub_get_logs':
+            await this.ensureConnected();
+            return await handleGetLogs(args, this.sprutClient, this.logger);
+          case 'spruthub_control_accessory':
+            await this.ensureConnected();
+            return await handleControlAccessory(args, this.sprutClient, this.logger);
+          case 'spruthub_control_room':
+            await this.ensureConnected();
+            return await handleControlRoom(args, this.sprutClient, this.logger);
+          case 'spruthub_run_scenario':
+            await this.ensureConnected();
+            return await handleRunScenario(args, this.sprutClient, this.logger);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -343,10 +512,48 @@ export class SpruthubMCPServer {
     });
   }
 
-  async run() {
+  async runStdio() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    this.logger.info('Spruthub MCP server started');
+    this.logger.info('Spruthub MCP server started (stdio mode)');
+  }
+
+  async runHTTP() {
+    const httpServer = http.createServer(async (req, res) => {
+      const url = new URL(req.url || '/', `http://${req.headers.host}`);
+
+      // Health check endpoint
+      if (url.pathname === '/health' && req.method === 'GET') {
+        const status = {
+          status: 'ok',
+          name: 'spruthub-mcp-server',
+          version: packageJson.version,
+          connected: !!this.sprutClient,
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(status));
+        return;
+      }
+
+      // MCP endpoint - handles both GET and POST via StreamableHTTP
+      if (url.pathname === '/mcp' || url.pathname === '/sse') {
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // Stateless mode
+        });
+
+        await this.server.connect(transport);
+        await transport.handleRequest(req, res);
+        return;
+      }
+
+      res.writeHead(404).end('Not found');
+    });
+
+    httpServer.listen(PORT, HOST, () => {
+      this.logger.info(`Spruthub MCP server running on http://${HOST}:${PORT}`);
+      this.logger.info(`MCP endpoint: http://${HOST}:${PORT}/mcp`);
+      this.logger.info(`Health check: http://${HOST}:${PORT}/health`);
+    });
   }
 }
 
@@ -374,8 +581,17 @@ const isMainModule = () => {
 
 if (isMainModule()) {
   const server = new SpruthubMCPServer();
-  server.run().catch((error) => {
-    // Use console.error for better formatting and stack traces
+  const mode = process.argv[2] || 'stdio';
+
+  const run = async () => {
+    if (mode === 'sse' || mode === 'http') {
+      await server.runHTTP();
+    } else {
+      await server.runStdio();
+    }
+  };
+
+  run().catch((error) => {
     console.error('Server failed to start:', error);
     process.exit(1);
   });
