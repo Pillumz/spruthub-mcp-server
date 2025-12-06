@@ -37,3 +37,9 @@ Thumbs.db
 # Temporary files
 .tmp/
 tmp/
+
+# Claude
+.claude/
+
+# Docker (local config)
+docker-compose.yml
