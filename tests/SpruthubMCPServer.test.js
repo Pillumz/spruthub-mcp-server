@@ -41,16 +41,25 @@ describe('Tool configuration', () => {
   test('should have expected tool names', () => {
     const expectedTools = [
       'spruthub_list_methods',
-      'spruthub_get_method_schema', 
-      'spruthub_call_method'
+      'spruthub_get_method_schema',
+      'spruthub_call_method',
+      'spruthub_list_accessories',
+      'spruthub_get_accessory',
+      'spruthub_list_rooms',
+      'spruthub_list_scenarios',
+      'spruthub_get_scenario',
+      'spruthub_get_logs',
+      'spruthub_control_accessory',
+      'spruthub_control_room',
+      'spruthub_run_scenario'
     ];
-    
+
     expectedTools.forEach(toolName => {
       expect(typeof toolName).toBe('string');
       expect(toolName.startsWith('spruthub_')).toBe(true);
     });
-    
-    expect(expectedTools).toHaveLength(3);
+
+    expect(expectedTools).toHaveLength(12);
   });
   
   test('should validate tool input schemas', () => {
