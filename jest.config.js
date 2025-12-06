@@ -12,5 +12,6 @@ export default {
     'src/**/*.js'
   ],
   coverageDirectory: 'coverage',
-  coverageReporters: ['text', 'lcov', 'html']
+  coverageReporters: ['text', 'lcov', 'html'],
+  injectGlobals: true
 };
