@@ -132,51 +132,64 @@ export SPRUTHUB_PASSWORD="your_actual_password"
 
 ### Available Tools
 
-This server provides three core tools that give you access to the complete Spruthub JSON-RPC API:
+This server provides 12 tools for smart home control:
 
-#### `spruthub_list_methods`
-Discover all available Spruthub API methods with their descriptions and categories.
+#### Dedicated Tools (Recommended)
 
-Parameters:
-- `category` (optional): Filter methods by category (`hub`, `accessory`, `scenario`, `room`, `system`)
+These tools provide controlled response sizes and a simple discovery-first workflow:
 
-**Example usage:** Start here to explore what's available in your Spruthub system.
+| Tool | Description |
+|------|-------------|
+| `spruthub_list_accessories` | List all devices (shallow data: id, name, room, status) |
+| `spruthub_get_accessory` | Get full details for one device by ID |
+| `spruthub_list_rooms` | List all rooms |
+| `spruthub_list_scenarios` | List all automation scenarios (shallow data) |
+| `spruthub_get_scenario` | Get full scenario details by ID |
+| `spruthub_get_logs` | Get recent system logs (default 20, max 100) |
+| `spruthub_control_accessory` | Control a single device by ID |
+| `spruthub_control_room` | Control all devices in a room |
+| `spruthub_run_scenario` | Execute an automation scenario |
 
-#### `spruthub_get_method_schema`
-Get detailed schema information for any API method, including parameters, return types, and examples.
+#### Generic API Tools (Advanced)
 
-Parameters:
-- `methodName` (required): The method name to get schema for (e.g., `accessory.search`, `characteristic.update`)
+For direct API access when you need methods not covered by dedicated tools:
 
-**Important:** Always call this tool before using `spruthub_call_method` to understand the exact parameter structure required.
-
-#### `spruthub_call_method`
-Execute any Spruthub JSON-RPC API method with the provided parameters.
-
-Parameters:
-- `methodName` (required): The API method to call
-- `parameters` (optional): Method parameters as defined in the method's schema
-
-**Critical:** You MUST call `spruthub_get_method_schema` first to understand the parameter structure. Never guess parameters.
+| Tool | Description |
+|------|-------------|
+| `spruthub_list_methods` | Discover all available API methods |
+| `spruthub_get_method_schema` | Get detailed schema for any method |
+| `spruthub_call_method` | Execute any JSON-RPC method directly |
 
 ### Common Workflows
 
-1. **Explore your system:**
-   ```
-   spruthub_list_methods → spruthub_get_method_schema → spruthub_call_method
-   ```
+**1. Turn on a light:**
+```
+spruthub_list_accessories → find device ID
+spruthub_control_accessory(id: 5, characteristic: "On", value: true)
+```
 
-2. **Control devices:**
-   ```
-   spruthub_get_method_schema(methodName: "characteristic.update")
-   → spruthub_call_method(methodName: "characteristic.update", parameters: {...})
-   ```
+**2. Turn off all lights in a room:**
+```
+spruthub_list_rooms → find room ID
+spruthub_control_room(roomId: 1, characteristic: "On", value: false, serviceType: "Lightbulb")
+```
 
-3. **Browse by category:**
-   ```
-   spruthub_list_methods(category: "accessory") → Get device-related methods
-   spruthub_list_methods(category: "scenario") → Get automation methods
-   ```
+**3. Run a scenario:**
+```
+spruthub_list_scenarios → find scenario ID
+spruthub_run_scenario(id: 10)
+```
+
+**4. Get device details:**
+```
+spruthub_list_accessories → find device ID
+spruthub_get_accessory(id: 5) → see all services and characteristics
+```
+
+**5. Advanced API access:**
+```
+spruthub_list_methods → spruthub_get_method_schema → spruthub_call_method
+```
 
 ## Efficient API Usage
 
