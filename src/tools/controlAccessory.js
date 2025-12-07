@@ -86,13 +86,17 @@ export async function handleControlAccessory(args, sprutClient, logger) {
     throw new Error(`Characteristic "${characteristic}" is read-only and cannot be controlled.`);
   }
 
-  // Build the API payload with aId, sId, cId
+  // Build the API payload with aId, sId, cId wrapped in characteristic.update
   const payload = {
-    aId: foundCharacteristic.aId,
-    sId: foundCharacteristic.sId,
-    cId: foundCharacteristic.cId,
-    control: {
-      value: wrapValue(value)
+    characteristic: {
+      update: {
+        aId: foundCharacteristic.aId,
+        sId: foundCharacteristic.sId,
+        cId: foundCharacteristic.cId,
+        control: {
+          value: wrapValue(value)
+        }
+      }
     }
   };
 

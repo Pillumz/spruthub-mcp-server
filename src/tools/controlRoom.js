@@ -105,13 +105,17 @@ export async function handleControlRoom(args, sprutClient, logger) {
       continue;
     }
 
-    // Build the API payload
+    // Build the API payload wrapped in characteristic.update
     const payload = {
-      aId: foundCharacteristic.aId,
-      sId: foundCharacteristic.sId,
-      cId: foundCharacteristic.cId,
-      control: {
-        value: wrapValue(value)
+      characteristic: {
+        update: {
+          aId: foundCharacteristic.aId,
+          sId: foundCharacteristic.sId,
+          cId: foundCharacteristic.cId,
+          control: {
+            value: wrapValue(value)
+          }
+        }
       }
     };
 

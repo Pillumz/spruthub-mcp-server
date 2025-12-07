@@ -46,11 +46,15 @@ describe('handleControlAccessory', () => {
     );
 
     expect(capturedUpdatePayload).toEqual({
-      aId: 5,
-      sId: 13,
-      cId: 15,
-      control: {
-        value: { boolValue: true }
+      characteristic: {
+        update: {
+          aId: 5,
+          sId: 13,
+          cId: 15,
+          control: {
+            value: { boolValue: true }
+          }
+        }
       }
     });
     expect(result.content[0].text).toContain('success');
@@ -161,6 +165,6 @@ describe('handleControlAccessory', () => {
       mockLogger
     );
 
-    expect(capturedPayload.control.value).toEqual({ intValue: 75 });
+    expect(capturedPayload.characteristic.update.control.value).toEqual({ intValue: 75 });
   });
 });

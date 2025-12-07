@@ -69,9 +69,9 @@ describe('handleControlRoom', () => {
 
     // Should only update 2 accessories in room 1
     expect(updateCalls).toHaveLength(2);
-    expect(updateCalls[0].aId).toBe(10);
-    expect(updateCalls[1].aId).toBe(11);
-    expect(updateCalls[0].control.value).toEqual({ boolValue: false });
+    expect(updateCalls[0].characteristic.update.aId).toBe(10);
+    expect(updateCalls[1].characteristic.update.aId).toBe(11);
+    expect(updateCalls[0].characteristic.update.control.value).toEqual({ boolValue: false });
 
     const response = JSON.parse(result.content[0].text);
     expect(response.affected).toHaveLength(2);
@@ -198,6 +198,6 @@ describe('handleControlRoom', () => {
 
     // Should only update the Lightbulb, not the Outlet
     expect(updateCalls).toHaveLength(1);
-    expect(updateCalls[0].aId).toBe(10);
+    expect(updateCalls[0].characteristic.update.aId).toBe(10);
   });
 });
