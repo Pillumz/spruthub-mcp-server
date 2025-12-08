@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 import websockets
-from websockets.client import WebSocketClientProtocol
+from websockets.protocol import State
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,19 @@ class SprutHubClient:
         self.serial = serial
         self.ws: WebSocketClientProtocol | None = None
         self._request_id = 0
+        self._token: str | None = None
         self._pending_requests: dict[int, asyncio.Future] = {}
         self._connected_event = asyncio.Event()
         self._receive_task: asyncio.Task | None = None
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if connected and authenticated."""
+        return self._connected_event.is_set()
+
     async def connect(self) -> None:
         """Connect to Sprut.hub WebSocket server and authenticate."""
-        if self.ws and not self.ws.closed:
+        if self.ws and self.ws.state == State.OPEN:
             logger.debug("Already connected")
             return
 
@@ -51,61 +57,94 @@ class SprutHubClient:
         # Start receiving messages
         self._receive_task = asyncio.create_task(self._receive_loop())
 
-        # Authenticate
+        # Authenticate using 3-step flow
         await self._authenticate()
 
         self._connected_event.set()
         logger.info("Connected and authenticated successfully")
 
     async def _authenticate(self) -> None:
-        """Authenticate with Sprut.hub server."""
-        auth_payload = {
-            "jsonrpc": "2.0",
-            "method": "auth",
-            "params": {
-                "email": self.email,
-                "password": self.password,
-                "serial": self.serial,
-            },
-            "id": self._get_request_id(),
-        }
+        """Authenticate with Sprut.hub server using 3-step challenge-response."""
+        # Step 1: Initial auth request
+        auth_result = await self._send_raw_request({
+            "account": {"auth": {"params": []}}
+        })
 
-        result = await self._send_request(auth_payload)
+        status = self._get_nested(auth_result, ["account", "auth", "status"])
+        question_type = self._get_nested(auth_result, ["account", "auth", "question", "type"])
 
-        if not result.get("isSuccess"):
-            raise RuntimeError(f"Authentication failed: {result.get('message', 'Unknown error')}")
+        if status != "ACCOUNT_RESPONSE_SUCCESS" or question_type != "QUESTION_TYPE_EMAIL":
+            raise RuntimeError(f"Auth step 1 failed: expected email question, got {question_type}")
 
-        logger.debug("Authentication successful")
+        logger.debug("Auth step 1: email question received")
+
+        # Step 2: Send email
+        email_result = await self._send_raw_request({
+            "account": {"answer": {"data": self.email}}
+        })
+
+        question_type = self._get_nested(email_result, ["account", "answer", "question", "type"])
+
+        if question_type != "QUESTION_TYPE_PASSWORD":
+            raise RuntimeError(f"Auth step 2 failed: expected password question, got {question_type}")
+
+        logger.debug("Auth step 2: password question received")
+
+        # Step 3: Send password
+        pwd_result = await self._send_raw_request({
+            "account": {"answer": {"data": self.password}}
+        })
+
+        status = self._get_nested(pwd_result, ["account", "answer", "status"])
+        token = self._get_nested(pwd_result, ["account", "answer", "token"])
+
+        if status != "ACCOUNT_RESPONSE_SUCCESS" or not token:
+            raise RuntimeError(f"Auth step 3 failed: {status}")
+
+        self._token = token
+        logger.info("Authentication successful, token received")
+
+    def _get_nested(self, data: dict, keys: list[str]) -> Any:
+        """Get nested value from dict."""
+        for key in keys:
+            if not isinstance(data, dict):
+                return None
+            data = data.get(key)
+        return data
 
     def _get_request_id(self) -> int:
         """Get next request ID."""
         self._request_id += 1
         return self._request_id
 
-    async def _send_request(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Send JSON-RPC request and wait for response.
+    async def _send_raw_request(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Send raw request with Sprut.hub message format.
 
         Args:
-            payload: JSON-RPC request payload
+            params: The params payload to send
 
         Returns:
-            Response data
-
-        Raises:
-            RuntimeError: If not connected or request fails
+            The result from response
         """
-        if not self.ws or self.ws.closed:
+        if not self.ws or self.ws.state != State.OPEN:
             raise RuntimeError("Not connected to Sprut.hub server")
 
-        request_id = payload["id"]
+        request_id = self._get_request_id()
+        payload = {
+            "jsonrpc": "2.0",
+            "params": params,
+            "id": request_id,
+            "token": self._token,
+            "serial": self.serial,
+        }
+
         future: asyncio.Future = asyncio.Future()
         self._pending_requests[request_id] = future
 
-        logger.debug(f"Sending request {request_id}: {payload['method']}")
+        logger.debug(f"Sending request {request_id}")
         await self.ws.send(json.dumps(payload))
 
         try:
-            # Wait for response with timeout
             result = await asyncio.wait_for(future, timeout=30.0)
             return result
         except asyncio.TimeoutError:
@@ -130,7 +169,7 @@ class SprutHubClient:
                         else:
                             future.set_result(data.get("result", {}))
                     else:
-                        # Notification or unsolicited message
+                        # Notification or unsolicited message (like streaming events)
                         logger.debug(f"Received notification: {data}")
 
                 except json.JSONDecodeError:
@@ -141,6 +180,7 @@ class SprutHubClient:
         except websockets.exceptions.ConnectionClosed:
             logger.warning("WebSocket connection closed")
             self._connected_event.clear()
+            self._token = None
         except Exception as e:
             logger.error(f"Error in receive loop: {e}")
             self._connected_event.clear()
@@ -148,8 +188,12 @@ class SprutHubClient:
     async def call_method(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Call a Sprut.hub JSON-RPC method.
 
+        The method string is converted to nested params format.
+        E.g., "accessory.search" with params {"query": "light"} becomes:
+        {"accessory": {"search": {"query": "light"}}}
+
         Args:
-            method: Method name (e.g., "accessory.search")
+            method: Method name (e.g., "accessory.search", "room.list")
             params: Method parameters (optional)
 
         Returns:
@@ -160,14 +204,15 @@ class SprutHubClient:
         """
         await self._connected_event.wait()
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {},
-            "id": self._get_request_id(),
-        }
+        # Convert method string to nested structure
+        # e.g., "accessory.search" -> {"accessory": {"search": params}}
+        parts = method.split(".")
+        nested_params: dict[str, Any] = params or {}
 
-        result = await self._send_request(payload)
+        for part in reversed(parts):
+            nested_params = {part: nested_params}
+
+        result = await self._send_raw_request(nested_params)
         return result
 
     async def close(self) -> None:
@@ -179,11 +224,12 @@ class SprutHubClient:
             except asyncio.CancelledError:
                 pass
 
-        if self.ws and not self.ws.closed:
+        if self.ws and self.ws.state == State.OPEN:
             await self.ws.close()
             logger.info("Disconnected from Sprut.hub")
 
         self._connected_event.clear()
+        self._token = None
 
     async def __aenter__(self):
         """Async context manager entry."""
