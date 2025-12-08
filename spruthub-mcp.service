@@ -1,0 +1,20 @@
+[Unit]
+Description=Sprut.hub MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mcp/spruthub-mcp
+Environment="PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/root/.local/bin/uv run python -m spruthub_mcp http
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spruthub-mcp
+
+[Install]
+WantedBy=multi-user.target
